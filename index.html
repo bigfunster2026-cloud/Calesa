@@ -81,27 +81,6 @@ const sendBtn = document.getElementById('send');
 const locationBtn = document.getElementById('useLocation');
 const resetBtn = document.getElementById('reset');
 
-// 🧠 CACHE SIMPLE
-const geoCache = new Map();
-
-// 🚀 Reverse geocode optimizado
-async function reverseGeocode(lat, lng) {
-    const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-    if (geoCache.has(key)) return geoCache.get(key);
-
-    try {
-        const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
-        );
-        const data = await res.json();
-        const address = data.display_name || `Lat: ${lat}, Lng: ${lng}`;
-        geoCache.set(key, address);
-        return address;
-    } catch {
-        return `Lat: ${lat}, Lng: ${lng}`;
-    }
-}
-
 // UI
 function updateUI() {
     if (originCoords && destCoords) {
@@ -114,7 +93,7 @@ function updateUI() {
     }
 }
 
-// MARKERS
+// MARCAR EN EL MAPA
 function setMarker(type, lat, lng) {
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
 
@@ -137,6 +116,7 @@ function setMarker(type, lat, lng) {
         const pos = e.target.getLatLng();
         if (type === 'origin') originCoords = pos;
         else destCoords = pos;
+        updateUI();
     });
 
     updateUI();
@@ -152,53 +132,61 @@ resetBtn.onclick = () => {
     updateUI();
 };
 
-// CLICK MAPA
+// CLICK EN EL MAPA
 map.on('click', e => {
     if (step === 'origin') setMarker('origin', e.latlng.lat, e.latlng.lng);
     else if (step === 'destination') setMarker('destination', e.latlng.lat, e.latlng.lng);
 });
 
-// UBICACIÓN
+// BOTÓN DE UBICACIÓN ACTUAL
 locationBtn.onclick = () => {
-    navigator.geolocation.getCurrentPosition(pos => {
-        const { latitude, longitude } = pos.coords;
-        map.setView([latitude, longitude], 15);
-        setMarker(step, latitude, longitude);
-    });
+    if (!navigator.geolocation) {
+        statusDiv.innerText = '❌ Geolocalización no soportada';
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            const { latitude, longitude } = pos.coords;
+            map.setView([latitude, longitude], 15);
+            setMarker(step, latitude, longitude);
+        },
+        err => {
+            console.warn(err);
+            statusDiv.innerText = '❌ No se pudo obtener tu ubicación';
+        }
+    );
 };
 
-// 🚀 ENVIAR (OPTIMIZADO)
-sendBtn.onclick = async () => {
+// 🔥 ENVÍO SIMPLE: solo coordenadas (sin reverse geocoding)
+sendBtn.onclick = () => {
     if (!originCoords || !destCoords) return;
 
-    statusDiv.innerText = '⏳ Obteniendo direcciones...';
+    // Formato de dirección mínimo (el bot hará reverse geocoding real)
+    const originAddress = `Lat: ${originCoords.lat.toFixed(5)}, Lng: ${originCoords.lng.toFixed(5)}`;
+    const destAddress = `Lat: ${destCoords.lat.toFixed(5)}, Lng: ${destCoords.lng.toFixed(5)}`;
+
+    const data = {
+        origin_address: originAddress,
+        destination_address: destAddress,
+        origin_coords: originCoords,
+        destination_coords: destCoords,
+        client_name: '',
+        client_username: '',
+        details: '',
+        vehicle_type: null,
+        vehicle_category: null,
+        manual_text_only: false
+    };
+
+    statusDiv.innerText = '📤 Enviando...';
     sendBtn.disabled = true;
 
     try {
-        // ⚡ paralelo
-        const [originAddress, destAddress] = await Promise.all([
-            reverseGeocode(originCoords.lat, originCoords.lng),
-            reverseGeocode(destCoords.lat, destCoords.lng)
-        ]);
-
-        const data = {
-            origin_address: originAddress,
-            destination_address: destAddress,
-            origin_coords: originCoords,
-            destination_coords: destCoords,
-            client_name: '',
-            client_username: '',
-            details: '',
-            vehicle_type: null,
-            vehicle_category: null,
-            manual_text_only: false
-        };
-
-        statusDiv.innerText = '📤 Enviando...';
-        tg.sendData(data); // ✅ SIN stringify
-
+        tg.sendData(JSON.stringify(data));
+        tg.close(); // Cierra la WebApp
     } catch (e) {
-        statusDiv.innerText = '❌ Error al obtener direcciones';
+        console.error(e);
+        statusDiv.innerText = '❌ Error al enviar';
         sendBtn.disabled = false;
     }
 };
