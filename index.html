@@ -66,7 +66,7 @@
             border: 1px solid rgba(255, 255, 255, 0.65);
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow);
-            padding: 14px;
+            padding: 12px;
             pointer-events: auto;
         }
 
@@ -110,8 +110,8 @@
             align-items: stretch;
             background: var(--panel-strong);
             border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 12px;
+            border-radius: 16px;
+            padding: 10px 12px;
         }
 
         .route-track {
@@ -185,9 +185,9 @@
             background: var(--panel);
             backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 255, 255, 0.65);
-            border-radius: 26px;
+            border-radius: 22px;
             box-shadow: var(--shadow);
-            padding: 12px;
+            padding: 10px;
             pointer-events: auto;
         }
 
@@ -201,11 +201,11 @@
 
         .status {
             margin: 0 0 12px;
-            padding: 11px 12px;
+            padding: 10px 12px;
             border-radius: var(--radius-md);
             background: #eef2f6;
             color: #334155;
-            font-size: 13px;
+            font-size: 12px;
             line-height: 1.35;
             font-weight: 600;
         }
@@ -213,8 +213,14 @@
         .quick-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .secondary-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
         }
 
         button {
@@ -237,8 +243,8 @@
 
         .btn-soft,
         .btn-danger {
-            min-height: 50px;
-            padding: 12px 14px;
+            min-height: 44px;
+            padding: 10px 12px;
             text-align: left;
         }
 
@@ -257,33 +263,34 @@
         .btn-soft strong,
         .btn-danger strong {
             display: block;
-            font-size: 14px;
-            margin-bottom: 2px;
+            font-size: 13px;
+            margin-bottom: 1px;
         }
 
         .btn-soft span,
         .btn-danger span {
             display: block;
             color: var(--muted);
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.3;
         }
 
         .btn-primary {
             width: 100%;
-            min-height: 56px;
-            padding: 14px 16px;
+            min-height: 48px;
+            padding: 12px 16px;
             background: linear-gradient(180deg, var(--brand-soft), var(--brand));
             color: #fff;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
             letter-spacing: 0.01em;
+            margin-bottom: 8px;
         }
 
         .hint {
-            margin: 10px 0 0;
+            margin: 0;
             text-align: center;
-            font-size: 11px;
+            font-size: 10px;
             color: var(--muted);
         }
 
@@ -356,11 +363,15 @@
                 <strong>Reiniciar</strong>
                 <span>Borra los puntos marcados</span>
             </button>
+        </div>
+
+        <button id="send" class="btn-primary" type="button" disabled>Confirmar ruta</button>
+
+        <div class="secondary-actions">
             <button id="cancel" class="btn-danger" type="button">
                 <strong>Cancelar</strong>
                 <span>Salir sin guardar este viaje</span>
             </button>
-            <button id="send" class="btn-primary" type="button" disabled>Confirmar ruta</button>
         </div>
 
         <p class="hint">Disenado para abrir rapido y funcionar bien con conexiones lentas.</p>
@@ -376,8 +387,8 @@ tg.expand();
 
 let map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 13);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '',
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
 }).addTo(map);
 
@@ -394,18 +405,19 @@ const stepBadge = document.getElementById('stepBadge');
 const originText = document.getElementById('originText');
 const destinationText = document.getElementById('destinationText');
 const tgUser = tg.initDataUnsafe?.user || {};
+const locationManager = tg.LocationManager;
 
+tg.ready();
 tg.BackButton.show();
 tg.BackButton.onClick(() => {
     tg.sendData(JSON.stringify({ action: 'cancel_map' }));
     tg.close();
 });
+if (typeof tg.enableClosingConfirmation === 'function') {
+    tg.enableClosingConfirmation();
+}
 
 const geoCache = new Map();
-
-function shortCoords(lat, lng) {
-    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-}
 
 function setPreviewText(element, value, fallback) {
     if (value) {
@@ -432,6 +444,76 @@ async function reverseGeocode(lat, lng) {
     } catch {
         return `Lat: ${lat}, Lng: ${lng}`;
     }
+}
+
+function applyLocation(lat, lng) {
+    map.setView([lat, lng], 15);
+    setMarker(step, lat, lng);
+}
+
+function fallbackToBrowserGeolocation() {
+    if (!navigator.geolocation) {
+        statusDiv.textContent = 'Tu dispositivo no permite usar GPS aqui.';
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            const { latitude, longitude } = pos.coords;
+            applyLocation(latitude, longitude);
+        },
+        () => {
+            statusDiv.textContent = 'No pude leer tu ubicacion. Puedes marcar el punto manualmente.';
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 30000
+        }
+    );
+}
+
+function requestTelegramLocation() {
+    if (!locationManager || typeof locationManager.init !== 'function') {
+        fallbackToBrowserGeolocation();
+        return;
+    }
+
+    locationManager.init(() => {
+        if (!locationManager.isAvailable || typeof locationManager.getLocation !== 'function') {
+            fallbackToBrowserGeolocation();
+            return;
+        }
+
+        const readLocation = () => {
+            locationManager.getLocation(location => {
+                if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+                    applyLocation(location.latitude, location.longitude);
+                    return;
+                }
+
+                fallbackToBrowserGeolocation();
+            });
+        };
+
+        if (locationManager.isAccessGranted) {
+            readLocation();
+            return;
+        }
+
+        if (typeof locationManager.requestAccess === 'function') {
+            locationManager.requestAccess(granted => {
+                if (granted || locationManager.isAccessGranted) {
+                    readLocation();
+                } else {
+                    fallbackToBrowserGeolocation();
+                }
+            });
+            return;
+        }
+
+        fallbackToBrowserGeolocation();
+    });
 }
 
 function updateUI() {
@@ -504,30 +586,11 @@ map.on('click', e => {
 });
 
 locationBtn.onclick = () => {
-    if (!navigator.geolocation) {
-        statusDiv.textContent = 'Tu dispositivo no permite usar GPS aqui.';
-        return;
-    }
-
     statusDiv.textContent = step === 'origin'
         ? 'Buscando tu ubicacion para el origen...'
         : 'Buscando tu ubicacion para el destino...';
 
-    navigator.geolocation.getCurrentPosition(
-        pos => {
-            const { latitude, longitude } = pos.coords;
-            map.setView([latitude, longitude], 15);
-            setMarker(step, latitude, longitude);
-        },
-        () => {
-            statusDiv.textContent = 'No pude leer tu ubicacion. Puedes marcar el punto manualmente.';
-        },
-        {
-            enableHighAccuracy: false,
-            timeout: 7000,
-            maximumAge: 60000
-        }
-    );
+    requestTelegramLocation();
 };
 
 sendBtn.onclick = async () => {
