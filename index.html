@@ -390,18 +390,28 @@ function applyLocation(lat, lng) {
     setMarker(step, lat, lng);
 }
 
-function fallbackToBrowserGeolocation() {
+function fallbackToBrowserGeolocation(customMessage) {
     if (!navigator.geolocation) {
         statusDiv.textContent = 'Tu dispositivo no permite usar GPS aqui.';
         return;
     }
 
+    if (customMessage) {
+        statusDiv.textContent = customMessage;
+    }
+
     navigator.geolocation.getCurrentPosition(
         pos => {
             const { latitude, longitude } = pos.coords;
+            statusDiv.textContent = 'Ubicacion obtenida. Revisa el punto en el mapa.';
             applyLocation(latitude, longitude);
         },
-        () => {
+        error => {
+            if (error && error.code === error.PERMISSION_DENIED) {
+                statusDiv.textContent = 'Debes permitir acceso a la ubicacion para usar este boton.';
+                return;
+            }
+
             statusDiv.textContent = 'No pude leer tu ubicacion. Puedes marcar el punto manualmente.';
         },
         {
@@ -418,20 +428,45 @@ function requestTelegramLocation() {
         return;
     }
 
+    let finished = false;
+    const finishWithFallback = (message) => {
+        if (finished) return;
+        finished = true;
+        fallbackToBrowserGeolocation(message);
+    };
+    const finishWithLocation = (lat, lng) => {
+        if (finished) return;
+        finished = true;
+        statusDiv.textContent = 'Ubicacion obtenida. Revisa el punto en el mapa.';
+        applyLocation(lat, lng);
+    };
+
+    const initTimer = setTimeout(() => {
+        finishWithFallback('Telegram no devolvio la ubicacion. Intentando con el GPS del dispositivo...');
+    }, 2500);
+
     locationManager.init(() => {
+        clearTimeout(initTimer);
+
         if (!locationManager.isAvailable || typeof locationManager.getLocation !== 'function') {
-            fallbackToBrowserGeolocation();
+            finishWithFallback('Tu cliente de Telegram no expone ubicacion. Intentando con el GPS del dispositivo...');
             return;
         }
 
         const readLocation = () => {
+            const readTimer = setTimeout(() => {
+                finishWithFallback('No llego respuesta de Telegram. Intentando con el GPS del dispositivo...');
+            }, 4000);
+
             locationManager.getLocation(location => {
+                clearTimeout(readTimer);
+
                 if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
-                    applyLocation(location.latitude, location.longitude);
+                    finishWithLocation(location.latitude, location.longitude);
                     return;
                 }
 
-                fallbackToBrowserGeolocation();
+                finishWithFallback('Telegram no pudo leer tu ubicacion. Intentando con el GPS del dispositivo...');
             });
         };
 
@@ -441,17 +476,23 @@ function requestTelegramLocation() {
         }
 
         if (typeof locationManager.requestAccess === 'function') {
+            const accessTimer = setTimeout(() => {
+                finishWithFallback('No se pudo confirmar el permiso en Telegram. Intentando con el GPS del dispositivo...');
+            }, 4000);
+
             locationManager.requestAccess(granted => {
+                clearTimeout(accessTimer);
+
                 if (granted || locationManager.isAccessGranted) {
                     readLocation();
                 } else {
-                    fallbackToBrowserGeolocation();
+                    finishWithFallback('Permiso denegado en Telegram. Intentando con el GPS del dispositivo...');
                 }
             });
             return;
         }
 
-        fallbackToBrowserGeolocation();
+        finishWithFallback('Telegram no permite pedir ubicacion en este dispositivo. Intentando con el GPS del dispositivo...');
     });
 }
 
