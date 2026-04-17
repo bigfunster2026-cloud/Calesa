@@ -48,50 +48,113 @@
             background: #d9e3ea;
         }
 
-        .launcher {
+        .top-shell {
             position: fixed;
-            inset: 0;
-            z-index: 1100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 18px;
-            background:
-                linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.28)),
-                linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04));
-            backdrop-filter: blur(10px);
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1001;
+            padding: calc(8px + env(safe-area-inset-top, 0px)) 8px 0;
+            pointer-events: none;
         }
 
-        .launcher[hidden] {
-            display: none;
-        }
-
-        .launcher-card {
-            width: min(100%, 320px);
-            background: rgba(255, 255, 255, 0.96);
+        .search-panel {
+            width: min(100%, 420px);
+            margin: 0 auto;
+            background: var(--panel);
+            backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.7);
             border-radius: 20px;
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
-            padding: 16px;
+            box-shadow: var(--shadow);
+            padding: 10px;
+            pointer-events: auto;
         }
 
-        .launcher-title {
-            margin: 0 0 4px;
-            font-size: 18px;
-            font-weight: 800;
+        .search-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .search-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .search-label strong {
+            font-size: 13px;
+        }
+
+        .search-label span {
+            color: var(--muted);
+            font-size: 10px;
+            line-height: 1.2;
+        }
+
+        .search-input {
+            width: 100%;
+            border: 1px solid rgba(17, 24, 39, 0.1);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.96);
+            padding: 11px 13px;
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .search-input:focus {
+            border-color: rgba(22, 163, 74, 0.45);
+            box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+        }
+
+        .search-hint {
+            margin-top: 7px;
+            color: var(--muted);
+            font-size: 10px;
+            line-height: 1.3;
+        }
+
+        .results {
+            display: none;
+            margin-top: 8px;
+            max-height: min(38vh, 260px);
+            overflow-y: auto;
+            border-top: 1px solid rgba(17, 24, 39, 0.07);
+            padding-top: 8px;
+        }
+
+        .results.show {
+            display: grid;
+            gap: 6px;
+        }
+
+        .result-item {
+            width: 100%;
+            border: 1px solid rgba(17, 24, 39, 0.08);
+            border-radius: 14px;
+            background: #fff;
+            padding: 10px 11px;
+            text-align: left;
+            min-height: 0;
+        }
+
+        .result-item strong {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 3px;
             color: var(--text);
         }
 
-        .launcher-subtitle {
-            margin: 0 0 14px;
-            font-size: 12px;
-            line-height: 1.35;
+        .result-item span {
+            display: block;
             color: var(--muted);
-        }
-
-        .launcher-actions {
-            display: grid;
-            gap: 8px;
+            font-size: 10px;
+            line-height: 1.35;
         }
 
         .badge {
@@ -223,25 +286,6 @@
             margin-bottom: 6px;
         }
 
-        .btn-launch {
-            min-height: 42px;
-            padding: 10px 12px;
-            text-align: left;
-        }
-
-        .btn-launch strong {
-            display: block;
-            font-size: 13px;
-            margin-bottom: 2px;
-        }
-
-        .btn-launch span {
-            display: block;
-            color: var(--muted);
-            font-size: 10px;
-            line-height: 1.25;
-        }
-
         .leaflet-control-zoom {
             border: none !important;
             box-shadow: var(--shadow) !important;
@@ -265,30 +309,31 @@
 
 <div id="map"></div>
 
-<section class="launcher" id="launcher">
-    <div class="launcher-card">
-        <h1 class="launcher-title">Pide tu viaje</h1>
-        <p class="launcher-subtitle">Elige como quieres indicar origen y destino.</p>
-
-        <div class="launcher-actions">
-            <button id="launchMap" class="btn-soft btn-launch" type="button">
-                <strong>Usar mapa</strong>
-                <span>Marca origen y destino sobre el mapa</span>
-            </button>
-            <button id="launchManual" class="btn-soft btn-launch" type="button">
-                <strong>Escribir manualmente</strong>
-                <span>Continua en el chat con direccion por texto</span>
-            </button>
-            <button id="launchCancel" class="btn-danger btn-launch" type="button">
-                <strong>Cancelar</strong>
-                <span>Salir sin iniciar este viaje</span>
-            </button>
+<div class="top-shell">
+    <section class="search-panel" aria-label="Buscar direcciones">
+        <div class="search-header">
+            <div class="search-label">
+                <strong id="searchTitle">Buscar origen</strong>
+                <span id="searchSubtitle">Escribe una direccion o un lugar y confirma el punto en el mapa.</span>
+            </div>
+            <div class="badge" id="searchStepBadge">Origen</div>
         </div>
-    </div>
-</section>
+        <input
+            id="searchInput"
+            class="search-input"
+            type="search"
+            inputmode="search"
+            autocomplete="off"
+            placeholder="Ejemplo: Parque Central, Santa Clara"
+            aria-label="Buscar direccion"
+        />
+        <div class="search-hint" id="searchHint">Tambien puedes tocar el mapa para afinar la ubicacion.</div>
+        <div id="searchResults" class="results" aria-live="polite"></div>
+    </section>
+</div>
 
 <div class="bottom-sheet">
-    <section class="actions" aria-label="Acciones del mapa" id="mapActions" hidden>
+    <section class="actions" aria-label="Acciones del mapa" id="mapActions">
         <div class="drag-handle" aria-hidden="true"></div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
             <p class="status" id="status" style="margin:0;flex:1;">Toca el mapa para marcar el origen.</p>
@@ -324,46 +369,126 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-let map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 13);
+const DEFAULT_CENTER = [21.5218, -77.7812];
+const DEFAULT_ZOOM = 7;
+const CUBA_BOUNDS = L.latLngBounds([19.5, -85.3], [23.5, -73.8]);
+
+let map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
 }).addTo(map);
+map.setMaxBounds(CUBA_BOUNDS.pad(0.2));
 
 let originMarker = null, destMarker = null;
 let originCoords = null, destCoords = null;
+let originAddress = '', destAddress = '';
 let step = 'origin';
+let searchTimer = null;
+let latestSearchToken = 0;
 
 const statusDiv = document.getElementById('status');
 const sendBtn = document.getElementById('send');
 const locationBtn = document.getElementById('useLocation');
 const resetBtn = document.getElementById('reset');
 const cancelBtn = document.getElementById('cancel');
-const launchMapBtn = document.getElementById('launchMap');
-const launchManualBtn = document.getElementById('launchManual');
-const launchCancelBtn = document.getElementById('launchCancel');
-const launcher = document.getElementById('launcher');
 const mapActions = document.getElementById('mapActions');
 const stepBadge = document.getElementById('stepBadge');
+const searchTitle = document.getElementById('searchTitle');
+const searchSubtitle = document.getElementById('searchSubtitle');
+const searchStepBadge = document.getElementById('searchStepBadge');
+const searchInput = document.getElementById('searchInput');
+const searchHint = document.getElementById('searchHint');
+const searchResults = document.getElementById('searchResults');
 const tgUser = tg.initDataUnsafe?.user || {};
 const locationManager = tg.LocationManager;
+const launchQueryId = tg.initDataUnsafe?.query_id || '';
+const canRelayDataToBot = !launchQueryId;
 
 tg.ready();
 tg.BackButton.show();
 tg.BackButton.onClick(() => {
-    tg.sendData(JSON.stringify({ action: 'cancel_map' }));
-    tg.close();
+    if (safeSendData({ action: 'cancel_map' }, 'Vuelve al chat del bot y escribe: taxi')) {
+        tg.close();
+    }
 });
 if (typeof tg.enableClosingConfirmation === 'function') {
     tg.enableClosingConfirmation();
 }
 
 const geoCache = new Map();
+const searchCache = new Map();
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatFallbackLabel(lat, lng) {
+    return `Ubicacion (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+}
+
+function normalizeWhitespace(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildAddressLabel(address) {
+    if (!address) return '';
+    if (typeof address === 'string') return normalizeWhitespace(address);
+
+    const roadParts = [
+        address.road,
+        address.house_number,
+        address.neighbourhood,
+        address.suburb
+    ].filter(Boolean);
+    const locality = [
+        address.city,
+        address.town,
+        address.village,
+        address.municipality,
+        address.county
+    ].find(Boolean);
+    const region = address.state || address.province || address.region;
+    const pieces = [];
+
+    if (roadParts.length) pieces.push(roadParts.join(' ').trim());
+    if (locality) pieces.push(locality);
+    if (region && region !== locality) pieces.push(region);
+
+    const compact = pieces
+        .map(part => normalizeWhitespace(part))
+        .filter(Boolean)
+        .filter((part, index, arr) => arr.indexOf(part) === index)
+        .join(', ');
+
+    return compact || normalizeWhitespace(address.display_name || '');
+}
+
+function getActiveType() {
+    return step === 'destination' || step === 'done' ? 'destination' : 'origin';
+}
+
+function getActiveAddress() {
+    return getActiveType() === 'origin' ? originAddress : destAddress;
+}
+
+function safeSendData(payload, fallbackMessage) {
+    if (!canRelayDataToBot || typeof tg.sendData !== 'function') {
+        statusDiv.textContent = fallbackMessage || 'Vuelve al chat del bot y escribe: taxi';
+        return false;
+    }
+
+    tg.sendData(JSON.stringify(payload));
+    return true;
+}
 
 function openMapMode() {
-    launcher.hidden = true;
-    mapActions.hidden = false;
     updateUI();
     setTimeout(() => map.invalidateSize(), 50);
 }
@@ -374,15 +499,92 @@ async function reverseGeocode(lat, lng) {
 
     try {
         const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&addressdetails=1&zoom=18`
         );
         const data = await res.json();
-        const address = data.display_name || `Lat: ${lat}, Lng: ${lng}`;
+        const address = buildAddressLabel(data.address || data) || normalizeWhitespace(data.display_name) || formatFallbackLabel(lat, lng);
         geoCache.set(key, address);
         return address;
     } catch {
-        return `Lat: ${lat}, Lng: ${lng}`;
+        return formatFallbackLabel(lat, lng);
     }
+}
+
+async function searchPlaces(query) {
+    const bounds = map.getBounds();
+    const bbox = [
+        bounds.getWest().toFixed(4),
+        bounds.getSouth().toFixed(4),
+        bounds.getEast().toFixed(4),
+        bounds.getNorth().toFixed(4)
+    ].join(',');
+    const cacheKey = `${query.toLowerCase()}|${bbox}`;
+    if (searchCache.has(cacheKey)) {
+        return searchCache.get(cacheKey);
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=cu&limit=6&dedupe=1&bounded=1&viewbox=${bbox}&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const results = (Array.isArray(data) ? data : []).map(item => ({
+        label: buildAddressLabel(item.address || item) || normalizeWhitespace(item.display_name),
+        secondary: normalizeWhitespace(item.display_name || ''),
+        lat: Number(item.lat),
+        lng: Number(item.lon)
+    })).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng) && item.label);
+
+    searchCache.set(cacheKey, results);
+    return results;
+}
+
+function clearSearchResults() {
+    searchResults.innerHTML = '';
+    searchResults.classList.remove('show');
+}
+
+function renderSearchResults(results) {
+    if (!results.length) {
+        searchResults.innerHTML = '<div class="status" style="margin:0;">No encontre resultados claros. Prueba con municipio, provincia o marca el punto en el mapa.</div>';
+        searchResults.classList.add('show');
+        return;
+    }
+
+    searchResults.innerHTML = results.map((result, index) => `
+        <button class="result-item" type="button" data-result-index="${index}">
+            <strong>${escapeHtml(result.label)}</strong>
+            <span>${escapeHtml(result.secondary || 'Ubicacion en Cuba')}</span>
+        </button>
+    `).join('');
+    searchResults.classList.add('show');
+}
+
+function focusSearchField() {
+    if (typeof searchInput.focus === 'function') {
+        searchInput.focus({ preventScroll: true });
+    }
+}
+
+function setAddressForType(type, address) {
+    if (type === 'origin') originAddress = address;
+    else destAddress = address;
+}
+
+async function hydrateAddressForPoint(type, lat, lng) {
+    const requestedLat = lat;
+    const requestedLng = lng;
+    const address = await reverseGeocode(lat, lng);
+
+    if (type === 'origin') {
+        if (!originCoords || originCoords.lat !== requestedLat || originCoords.lng !== requestedLng) return;
+    } else if (!destCoords || destCoords.lat !== requestedLat || destCoords.lng !== requestedLng) {
+        return;
+    }
+
+    setAddressForType(type, address);
+    if (getActiveType() === type) {
+        searchInput.value = address;
+    }
+    updateUI();
 }
 
 function applyLocation(lat, lng) {
@@ -390,110 +592,144 @@ function applyLocation(lat, lng) {
     setMarker(step, lat, lng);
 }
 
-function fallbackToBrowserGeolocation(customMessage) {
-    if (!navigator.geolocation) {
-        statusDiv.textContent = 'Tu dispositivo no permite usar GPS aqui.';
-        return;
-    }
+function getBrowserLocation() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('browser_unavailable'));
+            return;
+        }
 
-    if (customMessage) {
-        statusDiv.textContent = customMessage;
-    }
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                resolve({
+                    source: 'browser',
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+            },
+            error => {
+                reject(error || new Error('browser_failed'));
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 30000
+            }
+        );
+    });
+}
 
-    navigator.geolocation.getCurrentPosition(
-        pos => {
-            const { latitude, longitude } = pos.coords;
-            statusDiv.textContent = 'Ubicacion obtenida. Revisa el punto en el mapa.';
-            applyLocation(latitude, longitude);
-        },
-        error => {
-            if (error && error.code === error.PERMISSION_DENIED) {
-                statusDiv.textContent = 'Debes permitir acceso a la ubicacion para usar este boton.';
+function getTelegramLocation() {
+    return new Promise((resolve, reject) => {
+        if (!locationManager || typeof locationManager.init !== 'function') {
+            reject(new Error('telegram_unavailable'));
+            return;
+        }
+
+        let settled = false;
+        const finishResolve = (value) => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+        const finishReject = (reason) => {
+            if (settled) return;
+            settled = true;
+            reject(reason);
+        };
+
+        const initTimer = setTimeout(() => {
+            finishReject(new Error('telegram_init_timeout'));
+        }, 2500);
+
+        locationManager.init(() => {
+            clearTimeout(initTimer);
+
+            if (!locationManager.isAvailable || typeof locationManager.getLocation !== 'function') {
+                finishReject(new Error('telegram_not_available'));
                 return;
             }
 
-            statusDiv.textContent = 'No pude leer tu ubicacion. Puedes marcar el punto manualmente.';
-        },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 30000
-        }
-    );
+            const readLocation = () => {
+                const readTimer = setTimeout(() => {
+                    finishReject(new Error('telegram_read_timeout'));
+                }, 5000);
+
+                locationManager.getLocation(location => {
+                    clearTimeout(readTimer);
+
+                    if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+                        finishResolve({
+                            source: 'telegram',
+                            lat: location.latitude,
+                            lng: location.longitude
+                        });
+                        return;
+                    }
+
+                    finishReject(new Error('telegram_empty_location'));
+                });
+            };
+
+            if (locationManager.isAccessGranted) {
+                readLocation();
+                return;
+            }
+
+            if (typeof locationManager.requestAccess === 'function') {
+                const accessTimer = setTimeout(() => {
+                    finishReject(new Error('telegram_access_timeout'));
+                }, 4000);
+
+                locationManager.requestAccess(granted => {
+                    clearTimeout(accessTimer);
+
+                    if (granted || locationManager.isAccessGranted) {
+                        readLocation();
+                    } else {
+                        finishReject(new Error('telegram_access_denied'));
+                    }
+                });
+                return;
+            }
+
+            finishReject(new Error('telegram_access_unsupported'));
+        });
+    });
 }
 
-function requestTelegramLocation() {
-    if (!locationManager || typeof locationManager.init !== 'function') {
-        fallbackToBrowserGeolocation();
-        return;
+async function requestBestLocation() {
+    statusDiv.textContent = 'Buscando tu ubicacion...';
+
+    const providers = [getBrowserLocation(), getTelegramLocation()];
+    const failures = [];
+
+    while (providers.length) {
+        const wrapped = providers.map((promise, index) =>
+            promise.then(
+                value => ({ ok: true, index, value }),
+                error => ({ ok: false, index, error })
+            )
+        );
+
+        const result = await Promise.race(wrapped);
+        providers.splice(result.index, 1);
+
+        if (result.ok) {
+            statusDiv.textContent = result.value.source === 'telegram'
+                ? 'Ubicacion obtenida desde Telegram. Revisa el punto en el mapa.'
+                : 'Ubicacion obtenida desde el GPS del dispositivo. Revisa el punto en el mapa.';
+            applyLocation(result.value.lat, result.value.lng);
+            return;
+        }
+
+        failures.push(result.error);
     }
 
-    let finished = false;
-    const finishWithFallback = (message) => {
-        if (finished) return;
-        finished = true;
-        fallbackToBrowserGeolocation(message);
-    };
-    const finishWithLocation = (lat, lng) => {
-        if (finished) return;
-        finished = true;
-        statusDiv.textContent = 'Ubicacion obtenida. Revisa el punto en el mapa.';
-        applyLocation(lat, lng);
-    };
-
-    const initTimer = setTimeout(() => {
-        finishWithFallback('Telegram no devolvio la ubicacion. Intentando con el GPS del dispositivo...');
-    }, 2500);
-
-    locationManager.init(() => {
-        clearTimeout(initTimer);
-
-        if (!locationManager.isAvailable || typeof locationManager.getLocation !== 'function') {
-            finishWithFallback('Tu cliente de Telegram no expone ubicacion. Intentando con el GPS del dispositivo...');
-            return;
-        }
-
-        const readLocation = () => {
-            const readTimer = setTimeout(() => {
-                finishWithFallback('No llego respuesta de Telegram. Intentando con el GPS del dispositivo...');
-            }, 4000);
-
-            locationManager.getLocation(location => {
-                clearTimeout(readTimer);
-
-                if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
-                    finishWithLocation(location.latitude, location.longitude);
-                    return;
-                }
-
-                finishWithFallback('Telegram no pudo leer tu ubicacion. Intentando con el GPS del dispositivo...');
-            });
-        };
-
-        if (locationManager.isAccessGranted) {
-            readLocation();
-            return;
-        }
-
-        if (typeof locationManager.requestAccess === 'function') {
-            const accessTimer = setTimeout(() => {
-                finishWithFallback('No se pudo confirmar el permiso en Telegram. Intentando con el GPS del dispositivo...');
-            }, 4000);
-
-            locationManager.requestAccess(granted => {
-                clearTimeout(accessTimer);
-
-                if (granted || locationManager.isAccessGranted) {
-                    readLocation();
-                } else {
-                    finishWithFallback('Permiso denegado en Telegram. Intentando con el GPS del dispositivo...');
-                }
-            });
-            return;
-        }
-
-        finishWithFallback('Telegram no permite pedir ubicacion en este dispositivo. Intentando con el GPS del dispositivo...');
-    });
+    const permissionDenied = failures.some(error => error && error.code === error.PERMISSION_DENIED);
+    statusDiv.textContent = permissionDenied
+        ? 'Debes permitir acceso a la ubicacion en Telegram o en tu dispositivo.'
+        : 'No pude leer tu ubicacion. Puedes marcar el punto manualmente.';
 }
 
 function updateUI() {
@@ -501,12 +737,30 @@ function updateUI() {
         sendBtn.disabled = false;
         stepBadge.textContent = 'Listo';
         statusDiv.textContent = 'Ruta lista. Revisa los puntos y confirma.';
+        searchTitle.textContent = 'Editar destino';
+        searchSubtitle.textContent = 'Puedes corregir el destino desde la barra o tocando el mapa.';
+        searchStepBadge.textContent = 'Destino';
+        searchInput.placeholder = 'Buscar otro destino';
+        searchHint.textContent = `Origen: ${originAddress || 'pendiente'} | Destino: ${destAddress || 'pendiente'}`;
+        searchInput.value = destAddress || '';
     } else if (originCoords) {
         stepBadge.textContent = 'Paso 2';
         statusDiv.textContent = 'Ahora marca el destino.';
+        searchTitle.textContent = 'Buscar destino';
+        searchSubtitle.textContent = 'Escribe un lugar para el destino o tocalo en el mapa.';
+        searchStepBadge.textContent = 'Destino';
+        searchInput.placeholder = 'Ejemplo: Terminal de Omnibus, Matanzas';
+        searchHint.textContent = `Origen confirmado: ${originAddress || 'ajustando ubicacion...'}`;
+        searchInput.value = destAddress || '';
     } else {
         stepBadge.textContent = 'Paso 1';
         statusDiv.textContent = 'Toca el mapa para marcar el origen.';
+        searchTitle.textContent = 'Buscar origen';
+        searchSubtitle.textContent = 'Escribe una direccion o un lugar y confirma el punto en el mapa.';
+        searchStepBadge.textContent = 'Origen';
+        searchInput.placeholder = 'Ejemplo: Parque Vidal, Santa Clara';
+        searchHint.textContent = 'Tambien puedes tocar el mapa para afinar la ubicacion.';
+        searchInput.value = originAddress || '';
     }
 }
 
@@ -524,28 +778,34 @@ function setMarker(type, lat, lng) {
         if (originMarker) map.removeLayer(originMarker);
         originMarker = marker;
         originCoords = { lat, lng };
+        originAddress = '';
         step = 'destination';
+        destCoords = null;
+        destAddress = '';
+        if (destMarker) {
+            map.removeLayer(destMarker);
+            destMarker = null;
+        }
     } else {
         if (destMarker) map.removeLayer(destMarker);
         destMarker = marker;
         destCoords = { lat, lng };
+        destAddress = '';
         step = 'done';
         const bounds = L.latLngBounds([originCoords, destCoords]);
         setTimeout(() => map.fitBounds(bounds, { padding: [50, 90] }), 100);
     }
 
     updateUI();
+    clearSearchResults();
+    hydrateAddressForPoint(type, lat, lng);
 }
 
 function cancelMapFlow() {
     statusDiv.textContent = 'Cancelando...';
-    tg.sendData(JSON.stringify({ action: 'cancel_map' }));
-    tg.close();
-}
-
-function openManualFlow() {
-    tg.sendData(JSON.stringify({ action: 'open_manual_flow' }));
-    tg.close();
+    if (safeSendData({ action: 'cancel_map' }, 'Vuelve al chat del bot y escribe: taxi')) {
+        tg.close();
+    }
 }
 
 resetBtn.onclick = () => {
@@ -553,17 +813,17 @@ resetBtn.onclick = () => {
     if (destMarker) map.removeLayer(destMarker);
     originMarker = destMarker = null;
     originCoords = destCoords = null;
+    originAddress = destAddress = '';
     step = 'origin';
+    clearSearchResults();
     updateUI();
+    map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 };
 
 cancelBtn.onclick = cancelMapFlow;
-launchMapBtn.onclick = openMapMode;
-launchManualBtn.onclick = openManualFlow;
-launchCancelBtn.onclick = cancelMapFlow;
+openMapMode();
 
 map.on('click', e => {
-    if (!launcher.hidden) return;
     if (step === 'origin') setMarker('origin', e.latlng.lat, e.latlng.lng);
     else if (step === 'destination') setMarker('destination', e.latlng.lat, e.latlng.lng);
 });
@@ -573,8 +833,71 @@ locationBtn.onclick = () => {
         ? 'Buscando tu ubicacion para el origen...'
         : 'Buscando tu ubicacion para el destino...';
 
-    requestTelegramLocation();
+    requestBestLocation();
 };
+
+searchInput.addEventListener('input', () => {
+    const query = normalizeWhitespace(searchInput.value);
+
+    if (searchTimer) clearTimeout(searchTimer);
+    if (query.length < 3) {
+        clearSearchResults();
+        return;
+    }
+
+    const searchToken = ++latestSearchToken;
+    searchTimer = setTimeout(async () => {
+        searchResults.innerHTML = '<div class="status" style="margin:0;">Buscando direcciones...</div>';
+        searchResults.classList.add('show');
+
+        try {
+            const results = await searchPlaces(query);
+            if (searchToken !== latestSearchToken) return;
+            renderSearchResults(results);
+        } catch {
+            if (searchToken !== latestSearchToken) return;
+            searchResults.innerHTML = '<div class="status" style="margin:0;">No pude buscar ahora mismo. Puedes marcar el punto manualmente.</div>';
+            searchResults.classList.add('show');
+        }
+    }, 320);
+});
+
+searchResults.addEventListener('click', event => {
+    const button = event.target.closest('[data-result-index]');
+    if (!button) return;
+
+    const index = Number(button.getAttribute('data-result-index'));
+    const query = normalizeWhitespace(searchInput.value);
+    const bounds = map.getBounds();
+    const bbox = [
+        bounds.getWest().toFixed(4),
+        bounds.getSouth().toFixed(4),
+        bounds.getEast().toFixed(4),
+        bounds.getNorth().toFixed(4)
+    ].join(',');
+    const cacheKey = `${query.toLowerCase()}|${bbox}`;
+    const results = searchCache.get(cacheKey) || [];
+    const selected = results[index];
+    if (!selected) return;
+
+    const activeType = getActiveType();
+    map.flyTo([selected.lat, selected.lng], 16, { duration: 0.6 });
+    setAddressForType(activeType, selected.label);
+    setMarker(activeType, selected.lat, selected.lng);
+    setAddressForType(activeType, selected.label);
+    searchInput.value = selected.label;
+    clearSearchResults();
+});
+
+searchInput.addEventListener('search', () => {
+    if (!searchInput.value) clearSearchResults();
+});
+
+searchInput.addEventListener('focus', () => {
+    if (searchInput.value.trim().length >= 3 && searchResults.innerHTML.trim()) {
+        searchResults.classList.add('show');
+    }
+});
 
 sendBtn.onclick = async () => {
     if (!originCoords || !destCoords) return;
@@ -583,15 +906,15 @@ sendBtn.onclick = async () => {
     sendBtn.disabled = true;
 
     try {
-        const [originAddress, destAddress] = await Promise.all([
-            reverseGeocode(originCoords.lat, originCoords.lng),
-            reverseGeocode(destCoords.lat, destCoords.lng)
+        const [finalOriginAddress, finalDestAddress] = await Promise.all([
+            originAddress || reverseGeocode(originCoords.lat, originCoords.lng),
+            destAddress || reverseGeocode(destCoords.lat, destCoords.lng)
         ]);
 
         const data = {
             action: 'submit_trip',
-            origin_address: originAddress,
-            destination_address: destAddress,
+            origin_address: finalOriginAddress,
+            destination_address: finalDestAddress,
             origin: originCoords,
             destination: destCoords,
             client_name: `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim(),
@@ -603,8 +926,11 @@ sendBtn.onclick = async () => {
         };
 
         statusDiv.textContent = 'Enviando ruta al bot...';
-        tg.sendData(JSON.stringify(data));
-        tg.close();
+        if (safeSendData(data, 'Este modo no puede completar el viaje aqui. Vuelve al chat del bot y escribe: taxi')) {
+            tg.close();
+        } else {
+            sendBtn.disabled = false;
+        }
 
     } catch (e) {
         statusDiv.textContent = 'No pude obtener las direcciones. Intenta de nuevo.';
@@ -612,6 +938,7 @@ sendBtn.onclick = async () => {
     }
 };
 
+focusSearchField();
 updateUI();
 </script>
 
