@@ -376,6 +376,7 @@ const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoiYm9iYnk2IiwiYSI6ImNtbzRkM2xtZDFnaWUycHB1
 const MAPBOX_LANGUAGE = 'es';
 const MAPBOX_COUNTRY = 'cu';
 const MAPBOX_API_BASE = 'https://api.mapbox.com/search/geocode/v6';
+const MAPBOX_SEARCHBOX_API_BASE = 'https://api.mapbox.com/search/searchbox/v1';
 const GEOCODER_PROVIDER = MAPBOX_ACCESS_TOKEN ? 'mapbox' : 'nominatim';
 
 let map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
@@ -392,6 +393,7 @@ let originAddress = '', destAddress = '';
 let step = 'origin';
 let searchTimer = null;
 let latestSearchToken = 0;
+let activeSearchSessionToken = '';
 
 const statusDiv = document.getElementById('status');
 const sendBtn = document.getElementById('send');
@@ -503,6 +505,26 @@ function getSearchBounds() {
     return bounds && bounds.isValid() ? bounds : CUBA_BOUNDS;
 }
 
+function createSearchSessionToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+
+    return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function ensureSearchSessionToken() {
+    if (!activeSearchSessionToken) {
+        activeSearchSessionToken = createSearchSessionToken();
+    }
+
+    return activeSearchSessionToken;
+}
+
+function resetSearchSessionToken() {
+    activeSearchSessionToken = '';
+}
+
 function buildMapboxLabel(feature) {
     if (!feature) return '';
 
@@ -593,29 +615,35 @@ async function searchPlaces(query) {
 
     if (GEOCODER_PROVIDER === 'mapbox') {
         const center = bounds.getCenter();
+        const sessionToken = ensureSearchSessionToken();
         const params = new URLSearchParams({
             q: query,
             language: MAPBOX_LANGUAGE,
             country: MAPBOX_COUNTRY,
             limit: '6',
-            types: 'address,street,place,locality,neighborhood,poi',
             bbox,
             proximity: `${center.lng.toFixed(5)},${center.lat.toFixed(5)}`,
+            session_token: sessionToken,
             access_token: MAPBOX_ACCESS_TOKEN
         });
-        const response = await fetch(`${MAPBOX_API_BASE}/forward?${params.toString()}`);
+        const response = await fetch(`${MAPBOX_SEARCHBOX_API_BASE}/suggest?${params.toString()}`);
         const data = await response.json();
-        results = (Array.isArray(data.features) ? data.features : []).map(feature => {
-            const label = buildMapboxLabel(feature);
-            const coordinates = feature?.geometry?.coordinates || [];
+        results = (Array.isArray(data.suggestions) ? data.suggestions : []).map(item => {
+            const label = normalizeWhitespace(item.full_address || item.name_preferred || item.name || '');
+            const secondary = normalizeWhitespace(
+                item.place_formatted ||
+                item.context?.place?.name ||
+                item.context?.region?.name ||
+                ''
+            );
 
             return {
                 label,
-                secondary: buildMapboxSecondary(feature, label),
-                lat: Number(coordinates[1]),
-                lng: Number(coordinates[0])
+                secondary: secondary && secondary !== label ? secondary : 'Ubicacion en Cuba',
+                mapboxId: item.mapbox_id || '',
+                featureType: item.feature_type || ''
             };
-        }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng) && item.label);
+        }).filter(item => item.label && item.mapboxId);
     } else {
         const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=cu&limit=6&dedupe=1&bounded=1&viewbox=${bbox}&q=${encodeURIComponent(query)}`;
         const response = await fetch(url);
@@ -630,6 +658,34 @@ async function searchPlaces(query) {
 
     searchCache.set(cacheKey, results);
     return results;
+}
+
+async function retrievePlaceDetails(selected) {
+    if (GEOCODER_PROVIDER !== 'mapbox' || !selected?.mapboxId) {
+        return selected;
+    }
+
+    const sessionToken = ensureSearchSessionToken();
+    const params = new URLSearchParams({
+        language: MAPBOX_LANGUAGE,
+        session_token: sessionToken,
+        access_token: MAPBOX_ACCESS_TOKEN
+    });
+    const response = await fetch(
+        `${MAPBOX_SEARCHBOX_API_BASE}/retrieve/${encodeURIComponent(selected.mapboxId)}?${params.toString()}`
+    );
+    const data = await response.json();
+    const feature = Array.isArray(data.features) ? data.features[0] : null;
+    const coordinates = feature?.geometry?.coordinates || [];
+    const label = buildMapboxLabel(feature) || selected.label;
+
+    return {
+        ...selected,
+        label,
+        secondary: buildMapboxSecondary(feature, label) || selected.secondary,
+        lat: Number(coordinates[1]),
+        lng: Number(coordinates[0])
+    };
 }
 
 function clearSearchResults() {
@@ -915,6 +971,7 @@ resetBtn.onclick = () => {
     originCoords = destCoords = null;
     originAddress = destAddress = '';
     step = 'origin';
+    resetSearchSessionToken();
     clearSearchResults();
     updateUI();
     map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
@@ -941,6 +998,7 @@ searchInput.addEventListener('input', () => {
 
     if (searchTimer) clearTimeout(searchTimer);
     if (query.length < 3) {
+        resetSearchSessionToken();
         clearSearchResults();
         return;
     }
@@ -981,14 +1039,31 @@ searchResults.addEventListener('click', event => {
     if (!selected) return;
 
     const activeType = getActiveType();
-    map.flyTo([selected.lat, selected.lng], 16, { duration: 0.6 });
-    setMarker(activeType, selected.lat, selected.lng, { addressLabel: selected.label });
-    searchInput.value = selected.label;
-    clearSearchResults();
+
+    (async () => {
+        try {
+            statusDiv.textContent = 'Confirmando direccion seleccionada...';
+            const resolved = await retrievePlaceDetails(selected);
+            if (!Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
+                throw new Error('missing_coordinates');
+            }
+
+            map.flyTo([resolved.lat, resolved.lng], 16, { duration: 0.6 });
+            setMarker(activeType, resolved.lat, resolved.lng, { addressLabel: resolved.label });
+            searchInput.value = resolved.label;
+            clearSearchResults();
+            resetSearchSessionToken();
+        } catch {
+            statusDiv.textContent = 'No pude confirmar esa direccion. Prueba otra opcion o marca el punto en el mapa.';
+        }
+    })();
 });
 
 searchInput.addEventListener('search', () => {
-    if (!searchInput.value) clearSearchResults();
+    if (!searchInput.value) {
+        resetSearchSessionToken();
+        clearSearchResults();
+    }
 });
 
 searchInput.addEventListener('focus', () => {
