@@ -372,6 +372,11 @@ tg.expand();
 const DEFAULT_CENTER = [21.5218, -77.7812];
 const DEFAULT_ZOOM = 7;
 const CUBA_BOUNDS = L.latLngBounds([19.5, -85.3], [23.5, -73.8]);
+const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoiYm9iYnk2IiwiYSI6ImNtbzRkM2xtZDFnaWUycHB1aHducGN1aXkifQ.zKo3Q7iSPqe4Q3-LZcjKKg';
+const MAPBOX_LANGUAGE = 'es';
+const MAPBOX_COUNTRY = 'cu';
+const MAPBOX_API_BASE = 'https://api.mapbox.com/search/geocode/v6';
+const GEOCODER_PROVIDER = MAPBOX_ACCESS_TOKEN ? 'mapbox' : 'nominatim';
 
 let map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -493,16 +498,77 @@ function openMapMode() {
     setTimeout(() => map.invalidateSize(), 50);
 }
 
+function getSearchBounds() {
+    const bounds = map.getBounds();
+    return bounds && bounds.isValid() ? bounds : CUBA_BOUNDS;
+}
+
+function buildMapboxLabel(feature) {
+    if (!feature) return '';
+
+    const properties = feature.properties || {};
+    const primary = normalizeWhitespace(
+        properties.full_address ||
+        properties.name_preferred ||
+        properties.name ||
+        feature.place_name ||
+        feature.text
+    );
+    const secondary = normalizeWhitespace(
+        properties.place_formatted ||
+        feature.place_name ||
+        ''
+    );
+
+    return primary || secondary || '';
+}
+
+function buildMapboxSecondary(feature, label) {
+    if (!feature) return '';
+
+    const properties = feature.properties || {};
+    const secondary = normalizeWhitespace(
+        properties.place_formatted ||
+        feature.place_name ||
+        ''
+    );
+
+    if (!secondary || secondary === label) {
+        return 'Ubicacion en Cuba';
+    }
+
+    return secondary;
+}
+
 async function reverseGeocode(lat, lng) {
     const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
     if (geoCache.has(key)) return geoCache.get(key);
 
     try {
-        const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&addressdetails=1&zoom=18`
-        );
-        const data = await res.json();
-        const address = buildAddressLabel(data.address || data) || normalizeWhitespace(data.display_name) || formatFallbackLabel(lat, lng);
+        let address = '';
+
+        if (GEOCODER_PROVIDER === 'mapbox') {
+            const params = new URLSearchParams({
+                longitude: String(lng),
+                latitude: String(lat),
+                language: MAPBOX_LANGUAGE,
+                country: MAPBOX_COUNTRY,
+                limit: '1',
+                access_token: MAPBOX_ACCESS_TOKEN
+            });
+            const res = await fetch(`${MAPBOX_API_BASE}/reverse?${params.toString()}`);
+            const data = await res.json();
+            const feature = Array.isArray(data.features) ? data.features[0] : null;
+            address = buildMapboxLabel(feature);
+        } else {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&addressdetails=1&zoom=18`
+            );
+            const data = await res.json();
+            address = buildAddressLabel(data.address || data) || normalizeWhitespace(data.display_name);
+        }
+
+        address = address || formatFallbackLabel(lat, lng);
         geoCache.set(key, address);
         return address;
     } catch {
@@ -511,7 +577,7 @@ async function reverseGeocode(lat, lng) {
 }
 
 async function searchPlaces(query) {
-    const bounds = map.getBounds();
+    const bounds = getSearchBounds();
     const bbox = [
         bounds.getWest().toFixed(4),
         bounds.getSouth().toFixed(4),
@@ -523,15 +589,44 @@ async function searchPlaces(query) {
         return searchCache.get(cacheKey);
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=cu&limit=6&dedupe=1&bounded=1&viewbox=${bbox}&q=${encodeURIComponent(query)}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    const results = (Array.isArray(data) ? data : []).map(item => ({
-        label: buildAddressLabel(item.address || item) || normalizeWhitespace(item.display_name),
-        secondary: normalizeWhitespace(item.display_name || ''),
-        lat: Number(item.lat),
-        lng: Number(item.lon)
-    })).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng) && item.label);
+    let results = [];
+
+    if (GEOCODER_PROVIDER === 'mapbox') {
+        const center = bounds.getCenter();
+        const params = new URLSearchParams({
+            q: query,
+            language: MAPBOX_LANGUAGE,
+            country: MAPBOX_COUNTRY,
+            limit: '6',
+            types: 'address,street,place,locality,neighborhood,poi',
+            bbox,
+            proximity: `${center.lng.toFixed(5)},${center.lat.toFixed(5)}`,
+            access_token: MAPBOX_ACCESS_TOKEN
+        });
+        const response = await fetch(`${MAPBOX_API_BASE}/forward?${params.toString()}`);
+        const data = await response.json();
+        results = (Array.isArray(data.features) ? data.features : []).map(feature => {
+            const label = buildMapboxLabel(feature);
+            const coordinates = feature?.geometry?.coordinates || [];
+
+            return {
+                label,
+                secondary: buildMapboxSecondary(feature, label),
+                lat: Number(coordinates[1]),
+                lng: Number(coordinates[0])
+            };
+        }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng) && item.label);
+    } else {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=cu&limit=6&dedupe=1&bounded=1&viewbox=${bbox}&q=${encodeURIComponent(query)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        results = (Array.isArray(data) ? data : []).map(item => ({
+            label: buildAddressLabel(item.address || item) || normalizeWhitespace(item.display_name),
+            secondary: normalizeWhitespace(item.display_name || ''),
+            lat: Number(item.lat),
+            lng: Number(item.lon)
+        })).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng) && item.label);
+    }
 
     searchCache.set(cacheKey, results);
     return results;
@@ -764,7 +859,8 @@ function updateUI() {
     }
 }
 
-function setMarker(type, lat, lng) {
+function setMarker(type, lat, lng, options = {}) {
+    const normalizedAddress = normalizeWhitespace(options.addressLabel || '');
     const markerColor = type === 'origin' ? '#16a34a' : '#111827';
     const marker = L.circleMarker([lat, lng], {
         radius: 9,
@@ -778,7 +874,7 @@ function setMarker(type, lat, lng) {
         if (originMarker) map.removeLayer(originMarker);
         originMarker = marker;
         originCoords = { lat, lng };
-        originAddress = '';
+        originAddress = normalizedAddress;
         step = 'destination';
         destCoords = null;
         destAddress = '';
@@ -790,7 +886,7 @@ function setMarker(type, lat, lng) {
         if (destMarker) map.removeLayer(destMarker);
         destMarker = marker;
         destCoords = { lat, lng };
-        destAddress = '';
+        destAddress = normalizedAddress;
         step = 'done';
         const bounds = L.latLngBounds([originCoords, destCoords]);
         setTimeout(() => map.fitBounds(bounds, { padding: [50, 90] }), 100);
@@ -798,7 +894,11 @@ function setMarker(type, lat, lng) {
 
     updateUI();
     clearSearchResults();
-    hydrateAddressForPoint(type, lat, lng);
+
+    // Keep the label chosen from search results; only reverse geocode manual pin drops.
+    if (!normalizedAddress) {
+        hydrateAddressForPoint(type, lat, lng);
+    }
 }
 
 function cancelMapFlow() {
@@ -868,7 +968,7 @@ searchResults.addEventListener('click', event => {
 
     const index = Number(button.getAttribute('data-result-index'));
     const query = normalizeWhitespace(searchInput.value);
-    const bounds = map.getBounds();
+    const bounds = getSearchBounds();
     const bbox = [
         bounds.getWest().toFixed(4),
         bounds.getSouth().toFixed(4),
@@ -882,9 +982,7 @@ searchResults.addEventListener('click', event => {
 
     const activeType = getActiveType();
     map.flyTo([selected.lat, selected.lng], 16, { duration: 0.6 });
-    setAddressForType(activeType, selected.label);
-    setMarker(activeType, selected.lat, selected.lng);
-    setAddressForType(activeType, selected.label);
+    setMarker(activeType, selected.lat, selected.lng, { addressLabel: selected.label });
     searchInput.value = selected.label;
     clearSearchResults();
 });
