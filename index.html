@@ -48,6 +48,56 @@
             background: #d9e3ea;
         }
 
+        .center-pin-shell {
+            position: fixed;
+            inset: 0;
+            z-index: 900;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .center-pin {
+            position: relative;
+            width: 28px;
+            height: 28px;
+            margin-top: -18px;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            background: linear-gradient(180deg, #1f2937, #111827);
+            border: 3px solid #ffffff;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.28);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .center-pin::after {
+            content: "";
+            position: absolute;
+            inset: 6px;
+            border-radius: 50%;
+            background: #ffffff;
+        }
+
+        .center-pin.origin {
+            background: linear-gradient(180deg, #22c55e, #16a34a);
+        }
+
+        .center-pin.moving {
+            transform: rotate(-45deg) translateY(-5px);
+            box-shadow: 0 16px 28px rgba(15, 23, 42, 0.24);
+        }
+
+        .center-pin-shadow {
+            position: absolute;
+            width: 16px;
+            height: 7px;
+            margin-top: 24px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.18);
+            filter: blur(1px);
+        }
+
         .top-shell {
             position: fixed;
             top: 0;
@@ -308,6 +358,10 @@
 <body>
 
 <div id="map"></div>
+<div class="center-pin-shell" aria-hidden="true">
+    <div class="center-pin-shadow"></div>
+    <div id="centerPin" class="center-pin origin"></div>
+</div>
 
 <div class="top-shell">
     <section class="search-panel" aria-label="Buscar direcciones">
@@ -394,6 +448,7 @@ let step = 'origin';
 let searchTimer = null;
 let latestSearchToken = 0;
 let activeSearchSessionToken = '';
+let draftSelection = null;
 
 const statusDiv = document.getElementById('status');
 const sendBtn = document.getElementById('send');
@@ -408,6 +463,7 @@ const searchStepBadge = document.getElementById('searchStepBadge');
 const searchInput = document.getElementById('searchInput');
 const searchHint = document.getElementById('searchHint');
 const searchResults = document.getElementById('searchResults');
+const centerPin = document.getElementById('centerPin');
 const tgUser = tg.initDataUnsafe?.user || {};
 const locationManager = tg.LocationManager;
 const launchQueryId = tg.initDataUnsafe?.query_id || '';
@@ -483,6 +539,37 @@ function getActiveType() {
 
 function getActiveAddress() {
     return getActiveType() === 'origin' ? originAddress : destAddress;
+}
+
+function getCurrentCenterCoords() {
+    const center = map.getCenter();
+    return {
+        lat: Number(center.lat.toFixed(6)),
+        lng: Number(center.lng.toFixed(6))
+    };
+}
+
+function isPointNear(pointA, pointB, tolerance = 0.00018) {
+    if (!pointA || !pointB) return false;
+    return Math.abs(pointA.lat - pointB.lat) <= tolerance && Math.abs(pointA.lng - pointB.lng) <= tolerance;
+}
+
+function hasPendingDestinationEdit() {
+    if (!originCoords || !destCoords) return false;
+    return !isPointNear(getCurrentCenterCoords(), destCoords);
+}
+
+function setDraftSelection(type, lat, lng, address) {
+    draftSelection = {
+        type,
+        lat: Number(lat),
+        lng: Number(lng),
+        address: normalizeWhitespace(address || '')
+    };
+}
+
+function clearDraftSelection() {
+    draftSelection = null;
 }
 
 function safeSendData(payload, fallbackMessage) {
@@ -621,7 +708,6 @@ async function searchPlaces(query) {
             language: MAPBOX_LANGUAGE,
             country: MAPBOX_COUNTRY,
             limit: '6',
-            bbox,
             proximity: `${center.lng.toFixed(5)},${center.lat.toFixed(5)}`,
             session_token: sessionToken,
             access_token: MAPBOX_ACCESS_TOKEN
@@ -740,7 +826,8 @@ async function hydrateAddressForPoint(type, lat, lng) {
 
 function applyLocation(lat, lng) {
     map.setView([lat, lng], 15);
-    setMarker(step, lat, lng);
+    clearDraftSelection();
+    updateUI();
 }
 
 function getBrowserLocation() {
@@ -884,34 +971,53 @@ async function requestBestLocation() {
 }
 
 function updateUI() {
-    if (originCoords && destCoords) {
-        sendBtn.disabled = false;
+    const isEditingDestination = hasPendingDestinationEdit();
+
+    sendBtn.disabled = false;
+
+    if (originCoords && destCoords && !isEditingDestination) {
         stepBadge.textContent = 'Listo';
-        statusDiv.textContent = 'Ruta lista. Revisa los puntos y confirma.';
+        statusDiv.textContent = 'Ruta lista. Si todo esta bien, publica el viaje.';
         searchTitle.textContent = 'Editar destino';
-        searchSubtitle.textContent = 'Puedes corregir el destino desde la barra o tocando el mapa.';
+        searchSubtitle.textContent = 'Si quieres corregir el destino, mueve el mapa y confirma de nuevo.';
         searchStepBadge.textContent = 'Destino';
         searchInput.placeholder = 'Buscar otro destino';
         searchHint.textContent = `Origen: ${originAddress || 'pendiente'} | Destino: ${destAddress || 'pendiente'}`;
         searchInput.value = destAddress || '';
+        sendBtn.textContent = 'Publicar viaje';
+        centerPin.classList.remove('origin');
+    } else if (originCoords && destCoords && isEditingDestination) {
+        stepBadge.textContent = 'Editar';
+        statusDiv.textContent = 'Mueve el mapa hasta el nuevo destino y confirma el ajuste.';
+        searchTitle.textContent = 'Editar destino';
+        searchSubtitle.textContent = 'Centra el nuevo destino debajo del pin y confirma.';
+        searchStepBadge.textContent = 'Destino';
+        searchInput.placeholder = 'Buscar otro destino';
+        searchHint.textContent = `Destino actual: ${destAddress || 'pendiente'}`;
+        sendBtn.textContent = 'Actualizar destino';
+        centerPin.classList.remove('origin');
     } else if (originCoords) {
         stepBadge.textContent = 'Paso 2';
-        statusDiv.textContent = 'Ahora marca el destino.';
+        statusDiv.textContent = 'Mueve el mapa hasta el destino y confirma el punto central.';
         searchTitle.textContent = 'Buscar destino';
-        searchSubtitle.textContent = 'Escribe un lugar para el destino o tocalo en el mapa.';
+        searchSubtitle.textContent = 'Busca un lugar o mueve el mapa hasta dejar el destino bajo el pin.';
         searchStepBadge.textContent = 'Destino';
         searchInput.placeholder = 'Ejemplo: Terminal de Omnibus, Matanzas';
         searchHint.textContent = `Origen confirmado: ${originAddress || 'ajustando ubicacion...'}`;
         searchInput.value = destAddress || '';
+        sendBtn.textContent = 'Confirmar destino';
+        centerPin.classList.remove('origin');
     } else {
         stepBadge.textContent = 'Paso 1';
-        statusDiv.textContent = 'Toca el mapa para marcar el origen.';
+        statusDiv.textContent = 'Mueve el mapa hasta el origen y confirma el punto central.';
         searchTitle.textContent = 'Buscar origen';
-        searchSubtitle.textContent = 'Escribe una direccion o un lugar y confirma el punto en el mapa.';
+        searchSubtitle.textContent = 'Busca una direccion o mueve el mapa hasta dejar el origen bajo el pin.';
         searchStepBadge.textContent = 'Origen';
         searchInput.placeholder = 'Ejemplo: Parque Vidal, Santa Clara';
-        searchHint.textContent = 'Tambien puedes tocar el mapa para afinar la ubicacion.';
+        searchHint.textContent = 'Tambien puedes usar Mi ubicacion para acercarte mas rapido.';
         searchInput.value = originAddress || '';
+        sendBtn.textContent = 'Confirmar origen';
+        centerPin.classList.add('origin');
     }
 }
 
@@ -944,16 +1050,81 @@ function setMarker(type, lat, lng, options = {}) {
         destCoords = { lat, lng };
         destAddress = normalizedAddress;
         step = 'done';
-        const bounds = L.latLngBounds([originCoords, destCoords]);
-        setTimeout(() => map.fitBounds(bounds, { padding: [50, 90] }), 100);
     }
 
+    clearDraftSelection();
     updateUI();
     clearSearchResults();
 
     // Keep the label chosen from search results; only reverse geocode manual pin drops.
     if (!normalizedAddress) {
         hydrateAddressForPoint(type, lat, lng);
+    }
+}
+
+async function resolveSelectionAddress(type, lat, lng) {
+    if (
+        draftSelection &&
+        draftSelection.type === type &&
+        isPointNear({ lat, lng }, draftSelection)
+    ) {
+        return draftSelection.address || formatFallbackLabel(lat, lng);
+    }
+
+    return await reverseGeocode(lat, lng);
+}
+
+async function confirmCenteredPoint(type) {
+    const coords = getCurrentCenterCoords();
+    statusDiv.textContent = type === 'origin'
+        ? 'Confirmando origen...'
+        : 'Confirmando destino...';
+    sendBtn.disabled = true;
+
+    try {
+        const address = await resolveSelectionAddress(type, coords.lat, coords.lng);
+        setMarker(type, coords.lat, coords.lng, { addressLabel: address });
+        searchInput.value = address;
+    } catch {
+        statusDiv.textContent = 'No pude confirmar ese punto. Intenta mover el mapa un poco y probar de nuevo.';
+    } finally {
+        sendBtn.disabled = false;
+    }
+}
+
+async function submitTrip() {
+    statusDiv.textContent = 'Obteniendo direcciones...';
+    sendBtn.disabled = true;
+
+    try {
+        const [finalOriginAddress, finalDestAddress] = await Promise.all([
+            originAddress || reverseGeocode(originCoords.lat, originCoords.lng),
+            destAddress || reverseGeocode(destCoords.lat, destCoords.lng)
+        ]);
+
+        const data = {
+            action: 'submit_trip',
+            origin_address: finalOriginAddress,
+            destination_address: finalDestAddress,
+            origin: originCoords,
+            destination: destCoords,
+            client_name: `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim(),
+            client_username: tgUser.username || '',
+            details: '',
+            vehicle_type: null,
+            vehicle_category: null,
+            manual_text_only: false
+        };
+
+        statusDiv.textContent = 'Enviando ruta al bot...';
+        if (safeSendData(data, 'Este modo no puede completar el viaje aqui. Vuelve al chat del bot y escribe: taxi')) {
+            tg.close();
+        } else {
+            sendBtn.disabled = false;
+        }
+    } catch {
+        statusDiv.textContent = 'No pude obtener las direcciones. Intenta de nuevo.';
+        sendBtn.disabled = false;
     }
 }
 
@@ -971,6 +1142,7 @@ resetBtn.onclick = () => {
     originCoords = destCoords = null;
     originAddress = destAddress = '';
     step = 'origin';
+    clearDraftSelection();
     resetSearchSessionToken();
     clearSearchResults();
     updateUI();
@@ -981,8 +1153,19 @@ cancelBtn.onclick = cancelMapFlow;
 openMapMode();
 
 map.on('click', e => {
-    if (step === 'origin') setMarker('origin', e.latlng.lat, e.latlng.lng);
-    else if (step === 'destination') setMarker('destination', e.latlng.lat, e.latlng.lng);
+    map.flyTo(e.latlng, Math.max(map.getZoom(), 16), { duration: 0.35 });
+});
+
+map.on('movestart', () => {
+    centerPin.classList.add('moving');
+    if (draftSelection && !isPointNear(getCurrentCenterCoords(), draftSelection)) {
+        clearDraftSelection();
+    }
+});
+
+map.on('moveend', () => {
+    centerPin.classList.remove('moving');
+    updateUI();
 });
 
 locationBtn.onclick = () => {
@@ -1042,17 +1225,22 @@ searchResults.addEventListener('click', event => {
 
     (async () => {
         try {
-            statusDiv.textContent = 'Confirmando direccion seleccionada...';
+            statusDiv.textContent = 'Centrando direccion seleccionada...';
             const resolved = await retrievePlaceDetails(selected);
             if (!Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
                 throw new Error('missing_coordinates');
             }
 
+            const activeTypeForDraft = originCoords && destCoords ? 'destination' : activeType;
+            setDraftSelection(activeTypeForDraft, resolved.lat, resolved.lng, resolved.label);
             map.flyTo([resolved.lat, resolved.lng], 16, { duration: 0.6 });
-            setMarker(activeType, resolved.lat, resolved.lng, { addressLabel: resolved.label });
             searchInput.value = resolved.label;
             clearSearchResults();
             resetSearchSessionToken();
+            statusDiv.textContent = activeTypeForDraft === 'origin'
+                ? 'Revisa el punto en el centro y confirma el origen.'
+                : 'Revisa el punto en el centro y confirma el destino.';
+            updateUI();
         } catch {
             statusDiv.textContent = 'No pude confirmar esa direccion. Prueba otra opcion o marca el punto en el mapa.';
         }
@@ -1073,42 +1261,17 @@ searchInput.addEventListener('focus', () => {
 });
 
 sendBtn.onclick = async () => {
-    if (!originCoords || !destCoords) return;
-
-    statusDiv.textContent = 'Obteniendo direcciones...';
-    sendBtn.disabled = true;
-
-    try {
-        const [finalOriginAddress, finalDestAddress] = await Promise.all([
-            originAddress || reverseGeocode(originCoords.lat, originCoords.lng),
-            destAddress || reverseGeocode(destCoords.lat, destCoords.lng)
-        ]);
-
-        const data = {
-            action: 'submit_trip',
-            origin_address: finalOriginAddress,
-            destination_address: finalDestAddress,
-            origin: originCoords,
-            destination: destCoords,
-            client_name: `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim(),
-            client_username: tgUser.username || '',
-            details: '',
-            vehicle_type: null,
-            vehicle_category: null,
-            manual_text_only: false
-        };
-
-        statusDiv.textContent = 'Enviando ruta al bot...';
-        if (safeSendData(data, 'Este modo no puede completar el viaje aqui. Vuelve al chat del bot y escribe: taxi')) {
-            tg.close();
-        } else {
-            sendBtn.disabled = false;
-        }
-
-    } catch (e) {
-        statusDiv.textContent = 'No pude obtener las direcciones. Intenta de nuevo.';
-        sendBtn.disabled = false;
+    if (!originCoords) {
+        await confirmCenteredPoint('origin');
+        return;
     }
+
+    if (!destCoords || hasPendingDestinationEdit()) {
+        await confirmCenteredPoint('destination');
+        return;
+    }
+
+    await submitTrip();
 };
 
 focusSearchField();
